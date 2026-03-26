@@ -38,7 +38,19 @@ start_date = st.sidebar.date_input("시작일", end_date - datetime.timedelta(da
 selected_tickers = [korea_stocks[s] for s in selected_korea] + [us_stocks[s] for s in selected_us]
 
 if selected_tickers:
-    data = yf.download(selected_tickers, start=start_date, end=end_date)['Adj Close']
+    data = yf.download(selected_tickers, start=start_date, end=end_date)
+
+    # yfinance 데이터 구조 대응 (Adj Close 없을 수도 있음)
+    if isinstance(data.columns, pd.MultiIndex):
+        if 'Adj Close' in data.columns.get_level_values(0):
+            data = data['Adj Close']
+        else:
+            data = data['Close']
+    else:
+        if 'Adj Close' in data.columns:
+            data = data[['Adj Close']]
+        else:
+            data = data[['Close']]
     
     if isinstance(data, pd.Series):
         data = data.to_frame()
