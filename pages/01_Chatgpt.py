@@ -1,111 +1,92 @@
+# app.py
 import streamlit as st
 import yfinance as yf
 import pandas as pd
-import matplotlib.pyplot as plt
+import datetime
 
-st.set_page_config(page_title="📈 글로벌 주식 비교 대시보드", layout="wide")
+st.set_page_config(page_title="📈 글로벌 주식 비교", layout="wide")
 
-st.title("📊 한국 vs 미국 주식 수익률 비교")
+st.title("📊 한국 vs 미국 주식 수익률 비교 앱")
+st.write("yfinance를 이용해 주요 주식의 성과를 비교합니다.")
 
-# -----------------------------
 # 기본 종목 리스트
-# -----------------------------
-default_tickers = {
-    "한국": ["005930.KS", "000660.KS", "035420.KS"],  # 삼성전자, SK하이닉스, NAVER
-    "미국": ["AAPL", "MSFT", "GOOGL"]
+korea_stocks = {
+    "삼성전자": "005930.KS",
+    "SK하이닉스": "000660.KS",
+    "카카오": "035720.KS",
+    "네이버": "035420.KS"
 }
 
-# -----------------------------
-# 사용자 입력
-# -----------------------------
-st.sidebar.header("⚙️ 설정")
+us_stocks = {
+    "애플": "AAPL",
+    "마이크로소프트": "MSFT",
+    "테슬라": "TSLA",
+    "엔비디아": "NVDA"
+}
 
-market = st.sidebar.multiselect(
-    "시장 선택",
-    ["한국", "미국"],
-    default=["한국", "미국"]
-)
+# 사용자 선택
+st.sidebar.header("🔍 종목 선택")
+selected_korea = st.sidebar.multiselect("🇰🇷 한국 주식", list(korea_stocks.keys()), default=["삼성전자"])
+selected_us = st.sidebar.multiselect("🇺🇸 미국 주식", list(us_stocks.keys()), default=["애플"])
 
-tickers = []
-for m in market:
-    tickers += default_tickers[m]
+# 기간 선택
+st.sidebar.header("📅 기간 설정")
+end_date = datetime.date.today()
+start_date = st.sidebar.date_input("시작일", end_date - datetime.timedelta(days=180))
 
-custom_input = st.sidebar.text_input(
-    "추가 티커 입력 (쉼표로 구분)",
-    ""
-)
+# 티커 변환
+selected_tickers = [korea_stocks[s] for s in selected_korea] + [us_stocks[s] for s in selected_us]
 
-if custom_input:
-    tickers += [t.strip().upper() for t in custom_input.split(",")]
+if selected_tickers:
+    data = yf.download(selected_tickers, start=start_date, end=end_date)['Adj Close']
+    
+    if isinstance(data, pd.Series):
+        data = data.to_frame()
 
-start_date = st.sidebar.date_input("시작 날짜", pd.to_datetime("2023-01-01"))
-end_date = st.sidebar.date_input("종료 날짜", pd.to_datetime("today"))
+    # 수익률 계산
+    returns = (data / data.iloc[0] - 1) * 100
 
-# -----------------------------
-# 데이터 다운로드
-# -----------------------------
-@st.cache_data
-def load_data(tickers, start, end):
-    data = yf.download(tickers, start=start, end=end)["Adj Close"]
-    return data
+    st.subheader("📈 누적 수익률 (%)")
+    st.line_chart(returns)
 
-if len(tickers) == 0:
-    st.warning("티커를 선택하세요!")
-    st.stop()
+    st.subheader("📊 현재 수익률 비교")
+    latest_returns = returns.iloc[-1].sort_values(ascending=False)
+    st.bar_chart(latest_returns)
 
-data = load_data(tickers, start_date, end_date)
+    # 데이터 테이블
+    st.subheader("📋 데이터 테이블")
+    st.dataframe(returns.round(2))
 
-# -----------------------------
-# 수익률 계산
-# -----------------------------
-returns = (data / data.iloc[0] - 1) * 100
+    # 개별 종목 상세
+    st.subheader("🔎 개별 종목 상세 보기")
+    selected_detail = st.selectbox("종목 선택", selected_tickers)
 
-# -----------------------------
-# 차트 출력
-# -----------------------------
-st.subheader("📈 누적 수익률 비교 (%)")
+    stock = yf.Ticker(selected_detail)
+    info = stock.info
 
-fig, ax = plt.subplots(figsize=(12, 6))
+    col1, col2 = st.columns(2)
 
-for col in returns.columns:
-    ax.plot(returns.index, returns[col], label=col)
+    with col1:
+        st.metric("현재가", info.get("currentPrice", "N/A"))
+        st.metric("시가총액", info.get("marketCap", "N/A"))
 
-ax.set_ylabel("수익률 (%)")
-ax.legend()
-ax.grid(True)
+    with col2:
+        st.metric("PER", info.get("trailingPE", "N/A"))
+        st.metric("배당수익률", info.get("dividendYield", "N/A"))
 
-st.pyplot(fig)
+    hist = stock.history(period="6mo")
+    st.line_chart(hist['Close'])
 
-# -----------------------------
-# 데이터 테이블
-# -----------------------------
-st.subheader("📋 수익률 데이터")
+else:
+    st.warning("하나 이상의 종목을 선택해주세요.")
 
-st.dataframe(returns.tail())
+st.success("🎉 앱이 정상적으로 실행 중입니다!")
 
-# -----------------------------
-# 개별 종목 상세 보기
-# -----------------------------
-st.subheader("🔍 개별 종목 상세")
 
-selected_stock = st.selectbox("종목 선택", returns.columns)
-
-fig2, ax2 = plt.subplots(figsize=(10, 5))
-ax2.plot(data.index, data[selected_stock])
-ax2.set_title(f"{selected_stock} 가격 추이")
-ax2.grid(True)
-
-st.pyplot(fig2)
-
-# -----------------------------
-# 요약 통계
-# -----------------------------
-st.subheader("📊 요약 통계")
-
-summary = pd.DataFrame({
-    "총 수익률 (%)": returns.iloc[-1],
-    "최고 수익률 (%)": returns.max(),
-    "최저 수익률 (%)": returns.min()
-})
-
-st.dataframe(summary)
+# requirements.txt
+# 아래 내용을 별도 파일로 저장하세요
+"""
+streamlit
+yfinance
+pandas
+"""
