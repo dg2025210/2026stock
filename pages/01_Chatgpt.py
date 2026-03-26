@@ -63,7 +63,15 @@ if selected_tickers:
 
     st.subheader("📊 현재 수익률 비교")
     latest_returns = returns.iloc[-1].sort_values(ascending=False)
-    st.bar_chart(latest_returns)
+
+    # NaN / 무한값 제거 + DataFrame 형태로 변환 (Streamlit/Altair 오류 방지)
+    latest_returns = latest_returns.replace([float('inf'), float('-inf')], pd.NA).dropna()
+
+    if not latest_returns.empty:
+        chart_df = latest_returns.to_frame(name='Return (%)')
+        st.bar_chart(chart_df)
+    else:
+        st.warning("표시할 수익률 데이터가 없습니다.")
 
     # 데이터 테이블
     st.subheader("📋 데이터 테이블")
